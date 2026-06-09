@@ -766,6 +766,16 @@ background: var(--bg-surface);
 color: var(--text-main);
 }
 </style>
+
+<style id="delete-progress-style">
+.delete-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;justify-content:center;align-items:center;z-index:99999}
+.delete-box{background:#fff;padding:20px;border-radius:12px;min-width:280px;text-align:center;color:#000}
+.delete-spinner{width:40px;height:40px;border:4px solid #ddd;border-top:4px solid #2196F3;border-radius:50%;animation:deleteSpin 1s linear infinite;margin:0 auto 10px}
+.delete-progress{width:100%;height:10px;background:#ddd;border-radius:20px;overflow:hidden;margin-top:10px}
+.delete-progress-bar{width:0%;height:100%}
+@keyframes deleteSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+</style>
+
 </head>
 <body>
 <div id="toast-container" class="toast-container"></div>
@@ -3167,5 +3177,31 @@ break;
 });
 })();
 </script>
+
+<div id="deleteProgressOverlay" class="delete-overlay">
+  <div class="delete-box">
+    <div class="delete-spinner"></div>
+    <div id="deleteProgressText">Menghapus data...</div>
+    <div class="delete-progress">
+      <div id="deleteProgressBar" class="delete-progress-bar"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.showDeleteProgress=function(total,current){
+ const o=document.getElementById('deleteProgressOverlay');
+ if(o) o.style.display='flex';
+ const t=document.getElementById('deleteProgressText');
+ if(t && total){t.textContent=`Menghapus ${current||0} dari ${total} akun...`; }
+ const b=document.getElementById('deleteProgressBar');
+ if(b && total){b.style.width=((current||0)/total*100)+'%';}
+};
+window.hideDeleteProgress=function(){
+ const o=document.getElementById('deleteProgressOverlay');
+ if(o) o.style.display='none';
+};
+</script>
+
 </body>
 </html>
