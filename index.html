@@ -2590,67 +2590,125 @@ return;
 }
 executeImport();
 }
-function executeImport() {
-if (!importPendingData || !importPendingData.data) return;
-const data = importPendingData.data;
-const filteredVault = (data.vault || []).filter(a => importSelectedCategories.has(a.kategori));
-const filteredNotes = (data.notes || []).filter(n => importSelectedCategories.has(n.kategori));
-if (!confirm(`Import ${importSelectedCategories.size} kategori terpilih?
-${filteredVault.length} akun & ${filteredNotes.length} catatan akan ditambahkan ke database Anda.`)) {
-return;
-}
-let addedAkun = 0, skippedAkun = 0;
-let addedCatatan = 0, skippedCatatan = 0;
-filteredVault.forEach(a => {
-const isDuplicate = accounts.some(x =>
-x.id === a.id ||
-(x.username && a.username && x.username.toLowerCase() === a.username.toLowerCase() && x.nama_aplikasi === a.nama_aplikasi)
-);
-if (!isDuplicate) {
-a.vault_id = currentVaultId; // Pastikan data yang diimport masuk ke brankas aktif
-accounts.push(a);
-addedAkun++;
-if (isOnline && apiUrl) {
-const p = new URLSearchParams();
-p.append("action", "create"); p.append("data_type", "vault");
-p.append("kategori", a.kategori); p.append("nama_aplikasi", a.nama_aplikasi);
-p.append("username", a.username); p.append("email", a.email);
-p.append("password", a.password); p.append("ket", a.ket||''); p.append("ket_dua", a.ket_dua||'');
-fetch(apiUrl, { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: p }).catch(() => {});
-}
-} else {
-skippedAkun++;
-}
-});
-filteredNotes.forEach(n => {
-const isDuplicate = notes.some(x =>
-x.id === n.id ||
-(x.judul && n.judul && x.judul.toLowerCase() === n.judul.toLowerCase())
-);
-if (!isDuplicate) {
-n.vault_id = currentVaultId; // Pastikan data yang diimport masuk ke brankas aktif
-notes.push(n);
-addedCatatan++;
-if (isOnline && apiUrl) {
-const p = new URLSearchParams();
-p.append("action", "create"); p.append("data_type", "notes");
-p.append("kategori", n.kategori); p.append("judul", n.judul);
-p.append("isi", n.isi);
-fetch(apiUrl, { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: p }).catch(() => {});
-}
-} else {
-skippedCatatan++;
-}
-});
-renderCurrentView();
-renderStats();
-closeImportModal();
-let msg = `✅ Import selesai!<br>+${addedAkun} Akun, +${addedCatatan} Catatan ditambahkan.`;
-if (skippedAkun > 0 || skippedCatatan > 0) {
-msg += `<br>⏭️ ${skippedAkun} Akun & ${skippedCatatan} Catatan dilewati (sudah ada).`;
-}
-showToast(msg, 'fa-check-circle');
-importPendingData = null;
+async function executeImport() {
+    if (!importPendingData || !importPendingData.data) return;
+    const data = importPendingData.data;
+    const filteredVault = (data.vault || []).filter(a => importSelectedCategories.has(a.kategori));
+    const filteredNotes = (data.notes || []).filter(n => importSelectedCategories.has(n.kategori));
+    
+    if (!confirm(`Import ${importSelectedCategories.size} kategori terpilih?\n${filteredVault.length} akun & ${filteredNotes.length} catatan akan ditambahkan ke database Anda.`)) {
+        return;
+    }
+    
+    showToast('⏳ Mengimport data...', 'fa-spinner');
+    
+    let addedAkun = 0, skippedAkun = 0, failedAkun = 0;
+    let addedCatatan = 0, skippedCatatan = 0, failedCatatan = 0;
+    
+    // Helper function untuk delay antar request
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    
+    // ─── IMPORT AKUN (Sequential dengan delay) ───
+    for (let i = 0; i < filteredVault.length; i++) {
+        const a = filteredVault[i];
+        const isDuplicate = accounts.some(x =>
+            x.id === a.id ||
+            (x.username && a.username && x.username.toLowerCase() === a.username.toLowerCase() && x.nama_aplikasi === a.nama_aplikasi)
+        );
+        
+        if (!isDuplicate) {
+            a.vault_id = currentVaultId; // Pastikan masuk brankas aktif
+            accounts.push(a);
+            addedAkun++;
+            
+            if (isOnline && apiUrl) {
+                const p = new URLSearchParams();
+                p.append("action", "create"); 
+                p.append("data_type", "vault");
+                p.append("kategori", a.kategori); 
+                p.append("nama_aplikasi", a.nama_aplikasi);
+                p.append("username", a.username); 
+                p.append("email", a.email);
+                p.append("password", a.password); 
+                p.append("ket", a.ket||''); 
+                p.append("ket_dua", a.ket_dua||'');
+                p.append("vault_id", currentVaultId); // ✅ Kirim vault_id ke backend
+                
+                try {
+                    await fetch(apiUrl, { 
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'}, 
+                        body: p 
+                    });
+                    await delay(300); // ⏱️ Jeda 300ms untuk hindari rate limit Google
+                } catch(e) {
+                    failedAkun++;
+                    addToSyncQueue(p, `Import: ${a.nama_aplikasi}`); // Masuk antrian jika gagal
+                }
+            }
+        } else {
+            skippedAkun++;
+        }
+        
+        // Update progress setiap 3 item
+        if ((i + 1) % 3 === 0) {
+            showToast(`📥 Import akun... ${i + 1}/${filteredVault.length}`, 'fa-spinner');
+        }
+    }
+    
+    // ─── IMPORT CATATAN (Sequential dengan delay) ───
+    for (let i = 0; i < filteredNotes.length; i++) {
+        const n = filteredNotes[i];
+        const isDuplicate = notes.some(x =>
+            x.id === n.id ||
+            (x.judul && n.judul && x.judul.toLowerCase() === n.judul.toLowerCase())
+        );
+        
+        if (!isDuplicate) {
+            n.vault_id = currentVaultId; // Pastikan masuk brankas aktif
+            notes.push(n);
+            addedCatatan++;
+            
+            if (isOnline && apiUrl) {
+                const p = new URLSearchParams();
+                p.append("action", "create"); 
+                p.append("data_type", "notes");
+                p.append("kategori", n.kategori); 
+                p.append("judul", n.judul);
+                p.append("isi", n.isi);
+                p.append("vault_id", currentVaultId); // ✅ Kirim vault_id ke backend
+                
+                try {
+                    await fetch(apiUrl, { 
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'}, 
+                        body: p 
+                    });
+                    await delay(300); // ⏱️ Jeda 300ms
+                } catch(e) {
+                    failedCatatan++;
+                    addToSyncQueue(p, `Import: ${n.judul}`); // Masuk antrian jika gagal
+                }
+            }
+        } else {
+            skippedCatatan++;
+        }
+    }
+    
+    // ─── SELESAI ───
+    renderCurrentView();
+    renderStats();
+    closeImportModal();
+    
+    let msg = `✅ Import selesai!<br>+${addedAkun} Akun, +${addedCatatan} Catatan ditambahkan.`;
+    if (skippedAkun > 0 || skippedCatatan > 0) {
+        msg += `<br>⏭️ ${skippedAkun} Akun & ${skippedCatatan} Catatan dilewati (sudah ada).`;
+    }
+    if (failedAkun > 0 || failedCatatan > 0) {
+        msg += `<br>⚠️ ${failedAkun} Akun & ${failedCatatan} Catatan gagal sync (masuk antrian).`;
+    }
+    showToast(msg, 'fa-check-circle');
+    importPendingData = null;
 }
 function closeImportModal() {
 const modal = safeGet('importModal');
