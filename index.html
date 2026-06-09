@@ -1986,7 +1986,81 @@ function confirmFolderPick() { if (typeof pickerCallback === 'function') { const
 function openFolderAction(folderPath, dataType) { const targetTab = dataType === 'notes' ? 'catatan' : 'beranda'; if (folderPath.toLowerCase().startsWith('kerja')) { currentTab = 'kerja'; updateActiveTabUI(safeGet('tab-kerja'), "Akun Kerja"); } else if (folderPath.toLowerCase().startsWith('keuangan')) { currentTab = 'keuangan'; } else { currentTab = targetTab; updateActiveTabUI(safeGet('tab-' + targetTab), targetTab === 'catatan' ? 'Catatan' : 'Beranda'); } navigationStack = [folderPath]; renderCurrentView(); }
 function moveFolderAction(folderPath, dataType) { openFolderPicker(dataType, (targetPath) => { if (targetPath === folderPath) { showToast('ℹ️ Tidak bisa pindah ke folder yang sama', 'fa-info-circle'); return; } if (targetPath.startsWith(folderPath + '/')) { showToast('⚠️ Tidak bisa pindah ke dalam subfolder sendiri', 'fa-circle-exclamation'); return; } const dataArray = dataType === 'notes' ? notes : accounts; const affectedItems = dataArray.filter(item => { const kat = item.kategori || ''; return kat === folderPath || kat.startsWith(folderPath + '/'); }); if (affectedItems.length === 0) { showToast('ℹ️ Tidak ada item dalam folder ini', 'fa-info-circle'); return; } const oldName = folderPath.split('/').pop(); const finalNewPath = targetPath ? (targetPath + '/' + oldName) : oldName; let movedCount = 0; affectedItems.forEach(item => { const oldKat = item.kategori; let newKat = (oldKat === folderPath) ? finalNewPath : oldKat.replace(folderPath, finalNewPath); item.kategori = newKat; syncCategoryChange(item.id, newKat, dataType); movedCount++; }); showToast(`📦 ${movedCount} item dipindahkan ke "${finalNewPath}"`, 'fa-check-circle'); renderCurrentView(); }, folderPath); }
 function renameFolderAction(folderPath, folderName, dataType) { const newName = prompt('Rename folder:', folderName); if (!newName || newName.trim() === '' || newName === folderName) return; if (/[\/\\]/.test(newName)) { showToast('⚠️ Nama tidak boleh berisi / atau \\', 'fa-circle-exclamation'); return; } const dataArray = dataType === 'notes' ? notes : accounts; const affectedItems = dataArray.filter(item => { const kat = item.kategori || ''; return kat === folderPath || kat.startsWith(folderPath + '/'); }); if (affectedItems.length === 0) return; const parentPath = folderPath.includes('/') ? folderPath.substring(0, folderPath.lastIndexOf('/')) : ''; const newPath = parentPath ? (parentPath + '/' + newName.trim()) : newName.trim(); const exists = dataArray.some(item => { const kat = item.kategori || ''; return kat !== folderPath && !kat.startsWith(folderPath + '/') && (kat === newPath || kat.startsWith(newPath + '/')); }); if (exists) { showToast('⚠️ Folder dengan nama itu sudah ada', 'fa-circle-exclamation'); return; } let renamedCount = 0; affectedItems.forEach(item => { const oldKat = item.kategori; let newKat = (oldKat === folderPath) ? newPath : oldKat.replace(folderPath, newPath); item.kategori = newKat; syncCategoryChange(item.id, newKat, dataType); renamedCount++; }); showToast(`✏️ ${renamedCount} item di-rename ke "${newName.trim()}"`, 'fa-check-circle'); renderCurrentView(); }
-function deleteFolderAction(folderPath, dataType) { const dataArray = dataType === 'notes' ? notes : accounts; const affectedItems = dataArray.filter(item => { const kat = item.kategori || ''; return kat === folderPath || kat.startsWith(folderPath + '/'); }); if (affectedItems.length === 0) { showToast('ℹ️ Folder sudah kosong', 'fa-info-circle'); return; } if (!confirm(`Hapus folder "${folderPath}" beserta ${affectedItems.length} item di dalamnya? Tindakan ini tidak bisa dibatalkan.`)) return; affectedItems.forEach(item => { const p = new URLSearchParams({action: "delete", id: item.id, data_type: dataType}); if (isOnline && apiUrl) fetch(apiUrl, { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: p }).catch(() => addToSyncQueue(p, `Hapus: ${dataType}`)); else addToSyncQueue(p, `Hapus: ${dataType}`); }); const ids = affectedItems.map(i => String(i.id)); if (dataType === 'notes') notes = notes.filter(n => !ids.includes(String(n.id))); else accounts = accounts.filter(a => !ids.includes(String(a.id))); showToast(`🗑️ ${affectedItems.length} item dihapus`, 'fa-trash'); renderCurrentView(); renderStats(); }
+async function deleteFolderAction(folderPath, dataType) {
+    const dataArray = dataType === 'notes' ? notes : accounts;
+    const affectedItems = dataArray.filter(item => {
+        const kat = item.kategori || '';
+        return kat === folderPath || kat.startsWith(folderPath + '/');
+    });
+    
+    if (affectedItems.length === 0) {
+        showToast('ℹ️ Folder sudah kosong', 'fa-info-circle');
+        return;
+    }
+    
+    if (!confirm(`Hapus folder "${folderPath}" beserta ${affectedItems.length} item di dalamnya? Tindakan ini tidak bisa dibatalkan.`)) {
+        return;
+    }
+    
+    showToast(`⏳ Menghapus ${affectedItems.length} item...`, 'fa-spinner');
+    
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    // Helper untuk delay
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+    
+    // Hapus satu per satu dengan delay
+    for (let i = 0; i < affectedItems.length; i++) {
+        const item = affectedItems[i];
+        const p = new URLSearchParams({
+            action: "delete", 
+            id: item.id, 
+            data_type: dataType
+        });
+        
+        try {
+            if (isOnline && apiUrl) {
+                await fetch(apiUrl, { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'}, 
+                    body: p 
+                });
+            } else {
+                addToSyncQueue(p, `Hapus: ${item.nama_aplikasi || item.judul}`);
+            }
+            deletedCount++;
+        } catch(e) {
+            failedCount++;
+            addToSyncQueue(p, `Hapus: ${item.nama_aplikasi || item.judul}`);
+        }
+        
+        // Delay 200ms antar request
+        await delay(200);
+        
+        // Update progress setiap 10 item
+        if ((i + 1) % 10 === 0) {
+            showToast(`🗑️ Menghapus... ${i + 1}/${affectedItems.length}`, 'fa-spinner');
+        }
+    }
+    
+    // Hapus dari local data
+    const ids = affectedItems.map(i => String(i.id));
+    if (dataType === 'notes') {
+        notes = notes.filter(n => !ids.includes(String(n.id)));
+    } else {
+        accounts = accounts.filter(a => !ids.includes(String(a.id)));
+    }
+    
+    renderCurrentView();
+    renderStats();
+    
+    let msg = `🗑️ ${deletedCount} item dihapus`;
+    if (failedCount > 0) {
+        msg += ` (${failedCount} gagal, masuk antrian)`;
+    }
+    showToast(msg, 'fa-trash');
+}
 const DEFAULT_PIN_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
 let syncQueue = JSON.parse(localStorage.getItem('vault_sync_queue') || '[]');
 let isOnline = navigator.onLine;
