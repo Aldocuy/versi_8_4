@@ -2899,12 +2899,12 @@ window.onload = function() {
 };
 
 async function fetchData(dataType, skipTabChange) { 
-    // JIKA OFFLINE, LANGSUNG AMBIL DATA DARI MEMORI INTERNAL HP (ANTI-KOSONG 🚀)
-    if (!isOnline) {
+    // Ganti baris pengecekan paling atas dengan navigator.onLine bawaan browser
+    if (!navigator.onLine) {
         loadDataDariMemoriLokal();
         return;
     }
-
+   
     if (!apiUrl) { 
         showToast("⚠️ URL belum diatur!", "fa-database"); 
         loadDataDariMemoriLokal(); // Fallback ke memori lokal jika API belum diisi
@@ -2971,26 +2971,38 @@ function loadDataDariMemoriLokal() {
     updateSyncStatus();
 }
 // =====================================================================
-// 📂 SAKELAR INTEGRASI: FUNGSI MEMBACA MEMORI PERMANEN HP SAAT OFFLINE
+// 📂 FUNGSI MEMBACA MEMORI PERMANEN HP SAAT OFFLINE (VERSI ANTI-EROR ✅)
 // =====================================================================
 function loadDataDariMemoriLokal() {
     try {
         const lokalAkun = localStorage.getItem('royyek_vault_accounts');
         const lokalNotes = localStorage.getItem('royyek_vault_notes');
         
+        // Ambil data jika ada di memori internal HP
         if (lokalAkun) {
-            accounts = JSON.parse(lokalAkun);
+            window.accounts = JSON.parse(lokalAkun);
+        } else {
+            window.accounts = window.accounts || [];
         }
+        
         if (lokalNotes) {
-            notes = JSON.parse(lokalNotes);
+            window.notes = JSON.parse(lokalNotes);
+        } else {
+            window.notes = window.notes || [];
         }
         
         showToast("📂 Memuat memori lokal (Mode Offline)", "fa-folder-open");
         
-        // Render ulang komponen dashboard agar angka 0 langsung berubah sesuai data lokal
-        if (typeof renderStats === "function") renderStats();
-        if (typeof renderCurrentView === "function") renderCurrentView();
-        if (typeof updateSyncStatus === "function") updateSyncStatus();
+        // Pemicu render aman tanpa macet
+        if (typeof renderStats === "function") {
+            try { renderStats(); } catch(e) { console.warn("Sabar, renderStats nunggu DOM..."); }
+        }
+        if (typeof renderCurrentView === "function") {
+            try { renderCurrentView(); } catch(e) { console.warn("Sabar, renderCurrentView nunggu DOM..."); }
+        }
+        if (typeof updateSyncStatus === "function") {
+            try { updateSyncStatus(); } catch(e) { console.warn("Sabar, updateSyncStatus nunggu DOM..."); }
+        }
     } catch (err) {
         console.error("Gagal membaca storage lokal HP, Bos:", err);
     }
