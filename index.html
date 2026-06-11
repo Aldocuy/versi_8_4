@@ -2152,7 +2152,41 @@ pinInput.disabled = false;
 showToast("❌ Gagal memverifikasi. Gunakan HTTPS/localhost.", "fa-circle-xmark");
 }
 }
-function kunciBrankasMendadak() { sessionStorage.removeItem('vault_unlocked'); navigateToRoot(); const ls = safeGet('lockScreen'); const mp = safeGet('master-pin'); if (ls) ls.style.display = 'flex'; if (mp) mp.value = ''; document.querySelectorAll('#pinDots .dot').forEach(dot => dot.classList.remove('filled')); showToast('🔒 Brankas dikunci', 'fa-lock'); }
+function kunciBrankasMendadak() {
+    sessionStorage.removeItem('vault_unlocked');
+    navigateToRoot();
+
+    const ls = safeGet('lockScreen');
+    const mp = safeGet('master-pin');
+    const lockCard = safeGet('lockCard');
+
+    if (ls) ls.style.display = 'flex';
+
+    if (lockCard) {
+        lockCard.classList.remove('success');
+        lockCard.style.opacity = '1';
+        lockCard.style.transform = 'none';
+        lockCard.style.display = '';
+    }
+
+    const feedback = safeGet('lockFeedback');
+    if (feedback) feedback.classList.remove('show');
+
+    const pinError = safeGet('pin-error');
+    if (pinError) pinError.classList.remove('show');
+
+    if (mp) mp.disabled = false;
+
+    if (mp) {
+        mp.value = '';
+        try { mp.focus(); } catch(e) {}
+    }
+
+    document.querySelectorAll('#pinDots .dot')
+      .forEach(dot => dot.classList.remove('filled','error'));
+
+    showToast('🔒 Brankas dikunci', 'fa-lock');
+}
 function simulateBiometric() { const feedback = safeGet('lockFeedback'), lockCard = safeGet('lockCard'); if (!feedback || !lockCard) return; feedback.classList.add('show'); const feedbackText = feedback.querySelector('.feedback-text'); if (feedbackText) feedbackText.textContent = 'Memindai biometrik...'; setTimeout(() => { lockCard.classList.add('success'); showToast('✅ Biometrik berhasil!', 'fa-fingerprint'); sessionStorage.setItem('vault_unlocked', 'true'); setTimeout(() => { const ls = safeGet('lockScreen'); if (ls) ls.style.display = 'none'; if (feedbackText) feedbackText.textContent = 'Memverifikasi...'; }, 500); }, 1500); }
 function showRecoveryHint() { const hint = localStorage.getItem('vault_pin_hint') || 'PIN default: 1234'; alert('💡 Petunjuk: ' + hint); }
 function toggleThemeMode() { const current = document.documentElement.getAttribute('data-theme') || 'dark'; const target = current === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', target); localStorage.setItem('vault_theme', target); updateThemeToggleIcon(target); showToast('Mode ' + (target === 'dark' ? 'Gelap' : 'Terang'), "fa-circle-half-stroke"); }
